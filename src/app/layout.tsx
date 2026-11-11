@@ -7,6 +7,7 @@ const geistSans = Geist({ variable: "--font-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: { default: "Hikari Living — Everyday essentials", template: "%s · Hikari Living" },
   description: "Japanese-inspired lifestyle essentials, delivered across Pakistan. Cash on delivery available.",
 };
@@ -22,7 +23,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         {children}
-        <Toaster />
+        <Toaster theme="light" position="top-center" />
       </body>
     </html>
   );

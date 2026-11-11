@@ -26,6 +26,7 @@ npm run dev
 |---|---|
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm test` | Vitest unit tests (pure domain code, no DB) |
+| `npm run test:e2e` | Playwright storefront flows on mobile + desktop (needs the seeded DB; first run: `npx playwright install chromium`) |
 | `npm run typecheck` / `lint` | `tsc` / ESLint |
 | `npm run db:migrate` | Create/apply a migration |
 | `npm run db:seed` | Re-seed (wipes all app tables; refuses in production) |
@@ -38,7 +39,9 @@ src/domain/             pure business logic (money in paisa, PK phone numbers, â
 src/services/           application services; take a StoreContext
 src/actions/            Server Actions (thin: validate â†’ service)
 src/lib/                db client, env, admin auth (DB sessions)
-src/app/(storefront)/   customer-facing routes
+src/stores/             Zustand cart (persisted; prices re-checked server-side)
+src/components/storefront/  product card + quick-add, cart drawer, instant search
+src/app/(storefront)/   home, /c/[slug], /collections/[slug], /p/[slug], /search
 src/app/(admin)/admin/  merchant dashboard
 ```
 
