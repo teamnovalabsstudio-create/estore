@@ -35,8 +35,10 @@ npm run dev
 ## Layout
 ```
 prisma/                 schema, migrations (incl. sql_extras: CHECKs, search), seed
-src/domain/             pure business logic (money in paisa, PK phone numbers, …)
+src/domain/             pure business logic: money (paisa), PK phones, cart rules,
+                        pricing engine (promotions → coupon → shipping → COD fee)
 src/services/           application services; take a StoreContext
+                        (pricing.service quoteCart = server-authoritative cart pricing)
 src/actions/            Server Actions (thin: validate → service)
 src/lib/                db client, env, admin auth (DB sessions)
 src/stores/             Zustand cart (persisted; prices re-checked server-side)

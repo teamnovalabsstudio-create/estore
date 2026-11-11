@@ -463,3 +463,26 @@ export async function getStorefrontSettings(ctx: StoreContext) {
   });
   return s;
 }
+
+/**
+ * Cheap, popular, in-stock, single-variant products for 1-click cart add-ons.
+ * Cached briefly; the caller removes anything already in the cart.
+ */
+export async function listImpulseCandidates(ctx: StoreContext, maxPricePaisa: number): Promise<ProductCardData[]> {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag(catalogTag(ctx));
+
+  const rows = await db.product.findMany({
+    where: {
+      storeId: ctx.storeId,
+      status: "ACTIVE",
+      isImpulseEligible: true,
+      minPricePaisa: { lte: maxPricePaisa },
+    },
+    orderBy: [{ totalSold: "desc" }, { id: "asc" }],
+    take: 30,
+    select: cardSelect,
+  });
+  return rows.map(toCard).filter((p) => p.variants.length === 1 && p.inStock);
+}

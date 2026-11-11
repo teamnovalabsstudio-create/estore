@@ -22,7 +22,12 @@ type CartState = {
   open: () => void;
   close: () => void;
   setOpen: (open: boolean) => void;
+  /** Applies server truth (prices, availability). Returns what changed, for user feedback. */
+  reconcile: (server: ServerLine[], issues: ServerIssue[]) => { priceChanged: string[]; messages: string[] };
 };
+
+type ServerLine = { variantId: string; unitPricePaisa: number; title: string; variantTitle: string; imageUrl: string | null };
+type ServerIssue = { variantId: string; kind: "REMOVED" | "SOLD_OUT" | "QTY_REDUCED"; message: string; qty?: number };
 
 /**
  * Persisted client cart (localStorage). Only line snapshots are stored; prices
@@ -32,7 +37,7 @@ type CartState = {
  */
 export const useCart = create<CartState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       lines: [],
       isOpen: false,
       hydrated: false,
@@ -43,6 +48,35 @@ export const useCart = create<CartState>()(
       open: () => set({ isOpen: true }),
       close: () => set({ isOpen: false }),
       setOpen: (isOpen) => set({ isOpen }),
+      reconcile: (server, issues) => {
+        const priceChanged: string[] = [];
+        const messages = issues.map((i) => i.message);
+        const byId = new Map(server.map((l) => [l.variantId, l]));
+        const issueById = new Map(issues.map((i) => [i.variantId, i]));
+        let changed = false;
+
+        const next = get().lines.flatMap((line) => {
+          const issue = issueById.get(line.variantId);
+          if (issue && issue.kind !== "QTY_REDUCED") {
+            changed = true;
+            return [];
+          }
+          let updated = line;
+          if (issue?.kind === "QTY_REDUCED" && issue.qty != null && issue.qty !== line.qty) {
+            updated = { ...updated, qty: issue.qty };
+          }
+          const s = byId.get(line.variantId);
+          if (s && (s.unitPricePaisa !== line.unitPricePaisa || s.title !== line.title || s.variantTitle !== line.variantTitle)) {
+            if (s.unitPricePaisa !== line.unitPricePaisa) priceChanged.push(s.title);
+            updated = { ...updated, unitPricePaisa: s.unitPricePaisa, title: s.title, variantTitle: s.variantTitle, imageUrl: s.imageUrl };
+          }
+          if (updated !== line) changed = true;
+          return [updated];
+        });
+
+        if (changed) set({ lines: next });
+        return { priceChanged, messages };
+      },
     }),
     {
       name: "hikari-cart",
