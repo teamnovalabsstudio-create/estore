@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hikari Living — e-commerce store (PKR)
 
-## Getting Started
+Single-store, MINISO/Daiso-style storefront and merchant admin for Pakistan.
+Full spec and roadmap: [docs/PLAN.md](docs/PLAN.md).
 
-First, run the development server:
+## Stack
+Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind v4 + shadcn/ui ·
+PostgreSQL + Prisma 7 · Zod · Vitest.
+
+## Local setup
+Requires Node 20+ and a local PostgreSQL 16.
 
 ```bash
+cp .env.example .env          # set DATABASE_URL and SEED_ADMIN_PASSWORD
+createdb estore
+npm install
+npm run db:reset              # applies migrations + runs the seed
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Storefront: http://localhost:3000
+- Admin: http://localhost:3000/admin (log in with `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` from `.env`)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
+| Script | What it does |
+|---|---|
+| `npm run dev` / `build` / `start` | Next.js |
+| `npm test` | Vitest unit tests (pure domain code, no DB) |
+| `npm run typecheck` / `lint` | `tsc` / ESLint |
+| `npm run db:migrate` | Create/apply a migration |
+| `npm run db:seed` | Re-seed (wipes all app tables; refuses in production) |
+| `npm run db:reset` | Drop, migrate, seed |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Layout
+```
+prisma/                 schema, migrations (incl. sql_extras: CHECKs, search), seed
+src/domain/             pure business logic (money in paisa, PK phone numbers, …)
+src/services/           application services; take a StoreContext
+src/actions/            Server Actions (thin: validate → service)
+src/lib/                db client, env, admin auth (DB sessions)
+src/app/(storefront)/   customer-facing routes
+src/app/(admin)/admin/  merchant dashboard
+```
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Money is always integer **paisa** (`Rs. 1,299` = `129900`). Every tenant table
+carries `storeId` so the core can go multi-tenant later.

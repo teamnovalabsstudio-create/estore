@@ -1,0 +1,762 @@
+// Prisma schema — see docs/PLAN.md §2.
+// Conventions:
+//  * All money is integer PAISA (1 PKR = 100 paisa). Field names end in `Paisa`.
+//  * Every tenant-scoped table carries `storeId` and its indexes lead with it,
+//    so multi-tenancy later is a resolution change, not a schema rewrite.
+//  * Extra constraints Prisma can't express (CHECKs, trigram/tsvector indexes,
+//    search trigger) live in prisma/migrations/*_sql_extras/migration.sql.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Store & settings ─────────────────────────────
+
+model Store {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  currency  String   @default("PKR")
+  createdAt DateTime @default(now())
+
+  settings      StoreSettings?
+  shippingZones ShippingZone[]
+  cities        City[]
+  categories    Category[]
+  products      Product[]
+  variants      ProductVariant[]
+  collections   Collection[]
+  banners       Banner[]
+  promotions    Promotion[]
+  coupons       Coupon[]
+  customers     Customer[]
+  orders        Order[]
+  adminUsers    AdminUser[]
+}
+
+model StoreSettings {
+  storeId                    String  @id
+  store                      Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  freeShippingThresholdPaisa Int
+  defaultShippingPaisa       Int
+  codEnabled                 Boolean @default(true)
+  codMaxOrderPaisa           Int?
+  codFeePaisa                Int     @default(0)
+  impulseMaxPricePaisa       Int     @default(30000)
+  whatsappNumber             String?
+  supportEmail               String?
+  /// [{bank, accountTitle, accountNumber, iban, raastId}]
+  bankAccounts               Json    @default("[]")
+  lowStockThreshold          Int     @default(5)
+  reservationTtlMinutes      Int     @default(30)
+  bankTransferTtlHours       Int     @default(24)
+  codAutoCancelHours         Int     @default(48)
+  orderNumberPrefix          String  @default("MS")
+  updatedAt                  DateTime @updatedAt
+}
+
+model ShippingZone {
+  id            String  @id @default(cuid())
+  storeId       String
+  store         Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name          String
+  feePaisa      Int
+  /// Overrides the store-wide free-shipping threshold for this zone when set.
+  freeOverPaisa Int?
+  etaDays       String
+  isDefault     Boolean @default(false)
+  sortOrder     Int     @default(0)
+  cities        City[]
+
+  @@unique([storeId, name])
+}
+
+model City {
+  id               String       @id @default(cuid())
+  storeId          String
+  store            Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name             String
+  province         String
+  zoneId           String
+  zone             ShippingZone @relation(fields: [zoneId], references: [id])
+  /// {"trax":"LHE","leopards":"789","tcs":"LHE","postex":"Lahore"}
+  courierCityCodes Json         @default("{}")
+  isActive         Boolean      @default(true)
+  sortOrder        Int          @default(0)
+
+  addresses Address[]
+  orders    Order[]
+
+  @@unique([storeId, name])
+  @@index([storeId, isActive, sortOrder])
+}
+
+// ───────────────────────────── Catalog ─────────────────────────────
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Category {
+  id        String     @id @default(cuid())
+  storeId   String
+  store     Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryTree")
+  name      String
+  slug      String
+  imageUrl  String?
+  icon      String?
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+  products  Product[]
+
+  @@unique([storeId, slug])
+  @@index([storeId, parentId, sortOrder])
+}
+
+model Product {
+  id                String        @id @default(cuid())
+  storeId           String
+  store             Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  categoryId        String
+  category          Category      @relation(fields: [categoryId], references: [id])
+  title             String
+  slug              String
+  description       String        @default("")
+  brand             String?
+  status            ProductStatus @default(DRAFT)
+  /// Merchandising tags: "best-seller", "new", ... Price-band tags ("under-500") are derived.
+  tags              String[]      @default([])
+  isImpulseEligible Boolean       @default(false)
+  /// Denormalized from active variants for fast grid sort/filter.
+  minPricePaisa     Int           @default(0)
+  maxPricePaisa     Int           @default(0)
+  /// Denormalized for "Best Sellers" ranking.
+  totalSold         Int           @default(0)
+  /// Maintained by trigger (see sql_extras migration).
+  searchVector      Unsupported("tsvector")?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  images           ProductImage[]
+  options          ProductOption[]
+  variants         ProductVariant[]
+  collections      CollectionProduct[]
+  relations        ProductRelation[]   @relation("RelationSource")
+  relatedFrom      ProductRelation[]   @relation("RelationTarget")
+
+  @@unique([storeId, slug])
+  @@index([storeId, status, categoryId])
+  @@index([storeId, status, minPricePaisa])
+  @@index([storeId, status, totalSold(sort: Desc)])
+  @@index([storeId, status, createdAt(sort: Desc)])
+  @@index([tags], type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "Product_title_trgm_idx")
+  @@index([searchVector], type: Gin, map: "Product_searchVector_idx")
+}
+
+model ProductImage {
+  id        String          @id @default(cuid())
+  productId String
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  url       String
+  alt       String          @default("")
+  width     Int
+  height    Int
+  sortOrder Int             @default(0)
+
+  @@index([productId, sortOrder])
+}
+
+model ProductOption {
+  id        String               @id @default(cuid())
+  productId String
+  product   Product              @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String
+  position  Int                  @default(0)
+  values    ProductOptionValue[]
+
+  @@unique([productId, name])
+}
+
+model ProductOptionValue {
+  id        String               @id @default(cuid())
+  optionId  String
+  option    ProductOption        @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  value     String
+  swatchHex String?
+  position  Int                  @default(0)
+  variants  VariantOptionValue[]
+
+  @@unique([optionId, value])
+}
+
+model ProductVariant {
+  id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  /// Human label, e.g. "Pink / M". "Default" for single-variant products.
+  title          String   @default("Default")
+  sku            String
+  barcode        String?
+  pricePaisa     Int
+  compareAtPaisa Int?
+  costPaisa      Int      @default(0)
+  /// Physical units in the warehouse.
+  stockOnHand    Int      @default(0)
+  /// Units held by unpaid online/bank orders. available = onHand - reserved (DB CHECK enforces).
+  stockReserved  Int      @default(0)
+  /// Optimistic-lock counter for admin edits.
+  version        Int      @default(0)
+  weightGrams    Int?
+  isActive       Boolean  @default(true)
+  position       Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  optionValues VariantOptionValue[]
+  images       ProductImage[]
+  movements    InventoryMovement[]
+  orderItems   OrderItem[]
+
+  @@unique([storeId, sku])
+  @@unique([storeId, barcode])
+  @@index([productId, position])
+  @@index([storeId, isActive, stockOnHand])
+  @@index([sku(ops: raw("gin_trgm_ops"))], type: Gin, map: "ProductVariant_sku_trgm_idx")
+}
+
+model VariantOptionValue {
+  variantId     String
+  variant       ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  optionValueId String
+  optionValue   ProductOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, optionValueId])
+  @@index([optionValueId])
+}
+
+enum MovementReason {
+  ORDER_PLACED
+  ORDER_CANCELLED
+  RTO_RESTOCK
+  RESERVE
+  RELEASE
+  RESERVATION_CAPTURED
+  ADJUSTMENT
+  RESTOCK
+  INITIAL
+}
+
+/// Append-only ledger. Σ(delta of on-hand reasons) per variant must equal stockOnHand.
+model InventoryMovement {
+  id        String         @id @default(cuid())
+  storeId   String
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  /// Change to stockOnHand (RESERVE/RELEASE carry reservedDelta instead).
+  delta         Int        @default(0)
+  reservedDelta Int        @default(0)
+  reason    MovementReason
+  orderId   String?
+  actorId   String?
+  note      String?
+  createdAt DateTime       @default(now())
+
+  @@index([variantId, createdAt])
+  @@index([storeId, createdAt])
+  @@index([orderId])
+}
+
+enum CollectionType {
+  MANUAL
+  RULE
+}
+
+model Collection {
+  id           String              @id @default(cuid())
+  storeId      String
+  store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  title        String
+  slug         String
+  description  String              @default("")
+  type         CollectionType      @default(MANUAL)
+  /// RULE collections: {"maxPricePaisa":50000} | {"tag":"new"} | {"categorySlug":"stationery"}
+  rules        Json?
+  isFeatured   Boolean             @default(false)
+  sortOrder    Int                 @default(0)
+  heroImageUrl String?
+  isActive     Boolean             @default(true)
+  items        CollectionProduct[]
+  promotions   Promotion[]
+
+  @@unique([storeId, slug])
+  @@index([storeId, isFeatured, sortOrder])
+}
+
+model CollectionProduct {
+  collectionId String
+  collection   Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  position     Int        @default(0)
+
+  @@id([collectionId, productId])
+  @@index([productId])
+}
+
+enum RelationType {
+  FREQUENTLY_BOUGHT
+  UPSELL
+}
+
+model ProductRelation {
+  productId String
+  product   Product      @relation("RelationSource", fields: [productId], references: [id], onDelete: Cascade)
+  relatedId String
+  related   Product      @relation("RelationTarget", fields: [relatedId], references: [id], onDelete: Cascade)
+  type      RelationType
+  score     Float        @default(0)
+
+  @@id([productId, relatedId, type])
+  @@index([productId, type, score(sort: Desc)])
+}
+
+// ───────────────────────────── Merchandising & promotions ─────────────────────────────
+
+enum BannerPlacement {
+  HOME_HERO
+  HOME_STRIP
+}
+
+model Banner {
+  id             String          @id @default(cuid())
+  storeId        String
+  store          Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  title          String
+  subtitle       String?
+  imageUrl       String
+  mobileImageUrl String?
+  href           String
+  placement      BannerPlacement @default(HOME_HERO)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  sortOrder      Int             @default(0)
+  isActive       Boolean         @default(true)
+
+  @@index([storeId, placement, isActive, sortOrder])
+}
+
+enum PromoType {
+  BUNDLE_FIXED_PRICE
+  TIERED_PERCENT
+  BUY_X_GET_Y
+}
+
+model Promotion {
+  id           String      @id @default(cuid())
+  storeId      String
+  store        Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  name         String
+  /// Short customer-facing label, e.g. "Any 3 for Rs 999".
+  label        String
+  type         PromoType
+  /// BUNDLE_FIXED_PRICE: {"qty":3,"pricePaisa":99900}
+  /// TIERED_PERCENT:     {"tiers":[{"minQty":5,"percent":10}]}
+  /// BUY_X_GET_Y:        {"buy":2,"get":1}
+  config       Json
+  /// Scope: null = whole store; otherwise only products in this collection.
+  collectionId String?
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  priority     Int         @default(0)
+  stackable    Boolean     @default(false)
+  startsAt     DateTime?
+  endsAt       DateTime?
+  isActive     Boolean     @default(true)
+
+  @@index([storeId, isActive, priority])
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+  FREE_SHIPPING
+}
+
+model Coupon {
+  id               String             @id @default(cuid())
+  storeId          String
+  store            Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  code             String
+  type             CouponType
+  /// PERCENT: whole percent (10 = 10%). FIXED: paisa. FREE_SHIPPING: ignored.
+  value            Int                @default(0)
+  minSubtotalPaisa Int?
+  maxDiscountPaisa Int?
+  usageLimit       Int?
+  usedCount        Int                @default(0)
+  perPhoneLimit    Int?
+  startsAt         DateTime?
+  endsAt           DateTime?
+  isActive         Boolean            @default(true)
+  redemptions      CouponRedemption[]
+  orders           Order[]
+
+  @@unique([storeId, code])
+}
+
+model CouponRedemption {
+  id        String   @id @default(cuid())
+  couponId  String
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  phone     String
+  createdAt DateTime @default(now())
+
+  @@index([couponId, phone])
+}
+
+// ───────────────────────────── Customers & verification ─────────────────────────────
+
+enum RiskFlag {
+  NONE
+  WATCH
+  BLOCKED
+}
+
+model Customer {
+  id              String    @id @default(cuid())
+  storeId         String
+  store           Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  /// E.164, e.g. +923001234567
+  phone           String
+  name            String
+  email           String?
+  phoneVerifiedAt DateTime?
+  orderCount      Int       @default(0)
+  deliveredCount  Int       @default(0)
+  rtoCount        Int       @default(0)
+  riskFlag        RiskFlag  @default(NONE)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  addresses       Address[]
+  orders          Order[]
+
+  @@unique([storeId, phone])
+  @@index([storeId, riskFlag])
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  cityId     String
+  city       City     @relation(fields: [cityId], references: [id])
+  line1      String
+  area       String?
+  landmark   String?
+  postalCode String?
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+enum MessageChannelType {
+  WHATSAPP
+  SMS
+}
+
+model OtpChallenge {
+  id         String             @id @default(cuid())
+  storeId    String
+  phone      String
+  codeHash   String
+  channel    MessageChannelType
+  attempts   Int                @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime           @default(now())
+
+  @@index([storeId, phone, createdAt])
+}
+
+// ───────────────────────────── Orders & payments ─────────────────────────────
+
+enum OrderStatus {
+  AWAITING_PAYMENT
+  PENDING_VERIFICATION
+  CONFIRMED
+  PACKED
+  SHIPPED
+  DELIVERED
+  RETURNED_RTO
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD
+  ONLINE
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  UNPAID
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+  NEEDS_REFUND
+}
+
+model Order {
+  id                   String        @id @default(cuid())
+  storeId              String
+  store                Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  /// Human-readable, e.g. "MS-261111-0042".
+  orderNumber          String
+  customerId           String
+  customer             Customer      @relation(fields: [customerId], references: [id])
+  phone                String
+  customerName         String
+  email                String?
+  /// Snapshot: {line1, area, landmark, city, province, zone, courierCityCodes}
+  shippingAddress      Json
+  cityId               String
+  city                 City          @relation(fields: [cityId], references: [id])
+  status               OrderStatus
+  paymentMethod        PaymentMethod
+  paymentStatus        PaymentStatus @default(UNPAID)
+  subtotalPaisa        Int
+  discountPaisa        Int           @default(0)
+  shippingPaisa        Int           @default(0)
+  codFeePaisa          Int           @default(0)
+  totalPaisa           Int
+  /// Σ(unitCost × qty) snapshot → gross profit without joins.
+  costTotalPaisa       Int
+  /// Promo/coupon lines applied, for audit and display.
+  pricingBreakdown     Json          @default("{}")
+  couponId             String?
+  coupon               Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  riskScore            Int           @default(0)
+  riskReasons          String[]      @default([])
+  phoneVerified        Boolean       @default(false)
+  courier              String?
+  trackingNumber       String?
+  manifestBatchId      String?
+  manifestBatch        ManifestBatch? @relation(fields: [manifestBatchId], references: [id], onDelete: SetNull)
+  /// Client-generated per checkout attempt; makes double-submits return the same order.
+  idempotencyKey       String
+  reservationExpiresAt DateTime?
+  customerIp           String?
+  notes                String?
+  placedAt             DateTime      @default(now())
+  confirmedAt          DateTime?
+  packedAt             DateTime?
+  shippedAt            DateTime?
+  deliveredAt          DateTime?
+  cancelledAt          DateTime?
+  updatedAt            DateTime      @updatedAt
+
+  items      OrderItem[]
+  events     OrderEvent[]
+  payments   Payment[]
+  redemption CouponRedemption?
+
+  @@unique([storeId, orderNumber])
+  @@unique([storeId, idempotencyKey])
+  @@index([storeId, status, placedAt(sort: Desc)])
+  @@index([storeId, phone])
+  @@index([storeId, placedAt(sort: Desc)])
+  @@index([status, reservationExpiresAt])
+}
+
+model OrderItem {
+  id                String         @id @default(cuid())
+  orderId           String
+  order             Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId         String
+  variant           ProductVariant @relation(fields: [variantId], references: [id])
+  productTitle      String
+  variantTitle      String
+  sku               String
+  imageUrl          String?
+  unitPricePaisa    Int
+  unitCostPaisa     Int
+  quantity          Int
+  lineDiscountPaisa Int            @default(0)
+  lineTotalPaisa    Int
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+enum ActorType {
+  SYSTEM
+  ADMIN
+  CUSTOMER
+  WEBHOOK
+}
+
+model OrderEvent {
+  id         String       @id @default(cuid())
+  orderId    String
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus OrderStatus?
+  toStatus   OrderStatus
+  actorType  ActorType
+  actorId    String?
+  note       String?
+  createdAt  DateTime     @default(now())
+
+  @@index([orderId, createdAt])
+}
+
+model Payment {
+  id           String        @id @default(cuid())
+  orderId      String
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// safepay | payfast | bank_manual | cod
+  provider     String
+  providerRef  String?
+  amountPaisa  Int
+  status       PaymentStatus
+  receiptUrl   String?
+  reviewedById String?
+  rawPayload   Json?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@unique([provider, providerRef])
+  @@index([orderId])
+}
+
+/// Webhook idempotency: a repeated (provider, eventId) is a no-op.
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  provider    String
+  eventId     String
+  payload     Json
+  processedAt DateTime?
+  error       String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model ManifestBatch {
+  id          String   @id @default(cuid())
+  storeId     String
+  courier     String
+  createdById String
+  fileUrl     String?
+  orderCount  Int
+  createdAt   DateTime @default(now())
+  orders      Order[]
+
+  @@index([storeId, createdAt(sort: Desc)])
+}
+
+/// Per-store, per-day counter backing human order numbers (incremented atomically).
+model OrderSequence {
+  storeId String
+  day     String
+  last    Int    @default(0)
+
+  @@id([storeId, day])
+}
+
+// ───────────────────────────── Jobs & analytics ─────────────────────────────
+
+model Outbox {
+  id        String    @id @default(cuid())
+  storeId   String
+  /// WHATSAPP_CONFIRM | LOW_STOCK_ALERT | RELEASE_RESERVATION | ...
+  type      String
+  payload   Json
+  runAt     DateTime  @default(now())
+  attempts  Int       @default(0)
+  lastError String?
+  doneAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([doneAt, runAt])
+}
+
+model DailyStat {
+  storeId        String
+  date           DateTime @db.Date
+  orders         Int      @default(0)
+  units          Int      @default(0)
+  revenuePaisa   BigInt   @default(0)
+  cogsPaisa      BigInt   @default(0)
+  shippingPaisa  BigInt   @default(0)
+  discountPaisa  BigInt   @default(0)
+  deliveredCount Int      @default(0)
+  rtoCount       Int      @default(0)
+
+  @@id([storeId, date])
+}
+
+// ───────────────────────────── Admin auth ─────────────────────────────
+
+enum AdminRole {
+  OWNER
+  STAFF
+  PACKER
+}
+
+model AdminUser {
+  id           String         @id @default(cuid())
+  storeId      String
+  store        Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  email        String
+  name         String
+  passwordHash String
+  role         AdminRole      @default(STAFF)
+  isActive     Boolean        @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime       @default(now())
+  sessions     AdminSession[]
+
+  @@unique([storeId, email])
+}
+
+/// Server-side sessions. Only a SHA-256 of the cookie token is stored.
+model AdminSession {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  userAgent   String?
+  ip          String?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId])
+  @@index([expiresAt])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  key       String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
