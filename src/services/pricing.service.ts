@@ -135,7 +135,7 @@ async function resolveCoupon(
   };
 }
 
-export async function quoteCart(ctx: StoreContext, req: QuoteRequest): Promise<Quote> {
+export async function quoteCart(ctx: StoreContext, req: QuoteRequest, opts: { addOns?: boolean } = {}): Promise<Quote> {
   // Merge duplicate variant lines defensively (the client cart already merges).
   const requested = new Map<string, number>();
   for (const l of req.lines) {
@@ -241,7 +241,7 @@ export async function quoteCart(ctx: StoreContext, req: QuoteRequest): Promise<Q
 
   const inCart = new Set(purchasable.map((p) => p.v.product.id));
   const addOns =
-    purchasable.length > 0
+    opts.addOns !== false && purchasable.length > 0
       ? (await listImpulseCandidates(ctx, settings.impulseMaxPricePaisa)).filter((p) => !inCart.has(p.id)).slice(0, 6)
       : [];
 

@@ -21,6 +21,7 @@ export function SiteFooter() {
         <div>
           <p className="font-medium">Help</p>
           <ul className="mt-2 space-y-1.5 text-muted-foreground">
+            <li><Link href="/track" className="hover:text-foreground">Track your order</Link></li>
             <li>Cash on delivery available nationwide</li>
             <li>Delivery in 1–5 working days</li>
             <li>Easy returns within 7 days</li>

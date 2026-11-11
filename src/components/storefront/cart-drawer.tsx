@@ -168,8 +168,10 @@ export function CartDrawer() {
             <p className="text-xs text-muted-foreground">
               {quote?.freeShipping.qualified ? "Free delivery included." : "Delivery is added at checkout based on your city."} Coupons apply at checkout.
             </p>
-            <Button size="lg" className="h-11 w-full" disabled title="Checkout opens in Milestone 4">
-              Checkout
+            <Button asChild size="lg" className="h-11 w-full">
+              <Link href="/checkout" onClick={close}>
+                Checkout
+              </Link>
             </Button>
           </SheetFooter>
         )}

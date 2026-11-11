@@ -15,7 +15,8 @@
     "db:reset": "prisma migrate reset --force",
     "db:generate": "prisma generate",
     "postinstall": "prisma generate",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:int": "vitest run --config vitest.int.config.mts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",

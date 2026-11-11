@@ -14,7 +14,7 @@ import type { StoreContext } from "./context";
  * stock atomically regardless, so a slightly stale badge can't oversell.
  */
 
-const catalogTag = (ctx: StoreContext) => `catalog:${ctx.storeId}`;
+export const catalogTag = (ctx: StoreContext) => `catalog:${ctx.storeId}`;
 
 // ───────────────────────────── Types ─────────────────────────────
 
