@@ -19,6 +19,7 @@ import {
   type ManifestResult,
   type TrackingImportResult,
 } from "@/services/admin-orders.service";
+import { audit } from "@/services/audit.service";
 import { getStoreContext } from "@/services/context";
 
 /** Identity always comes from the session, never from the client. */
@@ -77,6 +78,7 @@ export async function setRiskFlagAction(customerId: string, flag: string): Promi
   const { admin, ctx } = await actor();
   return guarded(async () => {
     await setCustomerRiskFlag(ctx, admin, p.data.customerId, p.data.flag as RiskFlag);
+    await audit(ctx, admin.id, "customer.flag", p.data.customerId, { flag: p.data.flag });
     refresh();
     return { ok: true as const };
   });

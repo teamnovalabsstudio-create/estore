@@ -1,3 +1,4 @@
+import { ipFrom, limitByIp } from "@/lib/rate-limit";
 import { getStoreContext } from "@/services/context";
 import { quoteCart, quoteRequestSchema } from "@/services/pricing.service";
 
@@ -7,6 +8,8 @@ import { quoteCart, quoteRequestSchema } from "@/services/pricing.service";
  * discount and fee comes from the database.
  */
 export async function POST(request: Request) {
+  const limited = await limitByIp("quote", ipFrom(request));
+  if (!limited.ok) return Response.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds) } });
   let body: unknown;
   try {
     body = await request.json();

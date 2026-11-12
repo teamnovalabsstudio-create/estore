@@ -116,3 +116,28 @@ export async function sendOrderConfirmationTemplate(
   if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
   return true;
 }
+
+/**
+ * Customer order updates and merchant alerts. Business-initiated WhatsApp messages
+ * must use approved templates, so each kind maps to a template with ordered {{n}}
+ * parameters. With the console driver they're logged.
+ */
+export type TemplateMessage = { template: string; params: string[]; buttonUrlSuffix?: string };
+
+export async function sendTemplate(phoneE164: string, msg: TemplateMessage): Promise<void> {
+  if (env.MESSAGING_DRIVER !== "whatsapp" || !env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) {
+    console.info(`[whatsapp:console] ${phoneE164} ${msg.template}(${msg.params.join(" | ")})`);
+    return;
+  }
+  const to = toWhatsAppId(phoneE164);
+  if (!to) throw new Error("Invalid phone for WhatsApp");
+  const components: object[] = [{ type: "body", parameters: msg.params.map((text) => ({ type: "text", text })) }];
+  if (msg.buttonUrlSuffix) components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: msg.buttonUrlSuffix }] });
+  const res = await fetch(`https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", to, type: "template", template: { name: msg.template, language: { code: "en" }, components } }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+}

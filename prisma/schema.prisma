@@ -707,6 +707,9 @@ model DailyStat {
   cogsPaisa      BigInt   @default(0)
   shippingPaisa  BigInt   @default(0)
   discountPaisa  BigInt   @default(0)
+  codFeePaisa    BigInt   @default(0)
+  /// Orders placed this day in any state (for conversion).
+  placedCount    Int      @default(0)
   deliveredCount Int      @default(0)
   rtoCount       Int      @default(0)
 
@@ -759,4 +762,30 @@ model LoginAttempt {
   createdAt DateTime @default(now())
 
   @@index([key, createdAt])
+}
+
+/// Who changed what in the admin (catalog, merchandising, settings, staff). Orders and stock have their own history.
+model AuditLog {
+  id        String   @id @default(cuid())
+  storeId   String
+  actorId   String
+  action    String
+  entityId  String?
+  /// Small JSON summary (never secrets or full payloads).
+  details   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+
+  @@index([storeId, createdAt(sort: Desc)])
+  @@index([entityId])
+}
+
+/// Fixed-window counters for rate limiting across instances.
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  @@index([windowStart])
 }

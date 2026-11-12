@@ -13,26 +13,26 @@ import {
 import { formatPKR } from "@/domain/money";
 import { requirePermission } from "@/lib/auth/guard";
 import { getCatalogOverview } from "@/services/inventory.service";
+import { SalesOverview } from "./sales-overview";
 
 export const metadata: Metadata = { title: "Dashboard", robots: { index: false } };
 
-export default function AdminDashboardPage() {
+export default function AdminDashboardPage(props: PageProps<"/admin">) {
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Catalog health. Sales analytics arrive in Milestone 6.
-        </p>
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      <Suspense fallback={<div className="h-96 animate-pulse rounded-xl bg-muted" />}>
+        <SalesOverview searchParams={props.searchParams} />
+      </Suspense>
+      <h2 className="pt-2 text-lg font-semibold">Catalog health</h2>
       <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted" />}>
-        <Overview />
+        <CatalogOverview />
       </Suspense>
     </div>
   );
 }
 
-async function Overview() {
+async function CatalogOverview() {
   const user = await requirePermission("dashboard");
   const o = await getCatalogOverview(user.storeId);
 

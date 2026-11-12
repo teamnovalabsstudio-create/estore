@@ -1,6 +1,7 @@
 import { ChevronRight, RotateCcw, Truck, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { JsonLd } from "@/components/storefront/json-ld";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -28,7 +29,8 @@ export async function generateMetadata({ params }: PageProps<"/p/[slug]">): Prom
   return {
     title: product.title,
     description: product.description.slice(0, 160),
-    openGraph: { images: product.images[0] ? [product.images[0].url] : [] },
+    alternates: { canonical: `/p/${product.slug}` },
+    openGraph: { type: "website", title: product.title, description: product.description.slice(0, 160) },
   };
 }
 
@@ -48,8 +50,20 @@ async function ProductView({ params }: Pick<PageProps<"/p/[slug]">, "params">) {
   const product = await getProductDetail(ctx, slug);
   if (!product) notFound();
 
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   return (
     <div className="space-y-12">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: `${base}/` },
+            { "@type": "ListItem", position: 2, name: product.category.name, item: `${base}/c/${product.category.slug}` },
+            { "@type": "ListItem", position: 3, name: product.title },
+          ],
+        }}
+      />
       <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-xs text-muted-foreground">
         <Link href="/" className="hover:text-foreground">Home</Link>
         <ChevronRight className="size-3" />
@@ -91,13 +105,39 @@ async function Purchase({ ctx, product }: { ctx: StoreContext; product: ProductD
     getVariantAvailability(ctx, product.id),
     db.storeSettings.findUniqueOrThrow({ where: { storeId: ctx.storeId }, select: { lowStockThreshold: true } }),
   ]);
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  const prices = product.variants.map((v) => v.pricePaisa / 100);
+  const inStock = Object.values(availability).some((n) => n > 0);
   return (
-    <VariantPicker
+    <>
+      {/* Product rich result: rendered with live stock, so availability is never stale. */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "Product",
+          name: product.title,
+          description: product.description,
+          image: product.images.map((i) => (i.url.startsWith("http") ? i.url : `${base}${i.url}`)),
+          sku: product.variants[0]?.sku,
+          ...(product.brand ? { brand: { "@type": "Brand", name: product.brand } } : {}),
+          offers: {
+            "@type": "AggregateOffer",
+            priceCurrency: "PKR",
+            lowPrice: Math.min(...prices),
+            highPrice: Math.max(...prices),
+            offerCount: product.variants.length,
+            availability: inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            url: `${base}/p/${product.slug}`,
+          },
+        }}
+      />
+      <VariantPicker
       product={product}
       imageUrl={product.images[0]?.url ?? null}
       availability={availability}
       lowStockThreshold={settings.lowStockThreshold}
     />
+    </>
   );
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CategoryPills } from "@/components/storefront/category-pills";
+import { JsonLd } from "@/components/storefront/json-ld";
 import { ProductImage } from "@/components/storefront/product-image";
 import { ProductRail } from "@/components/storefront/product-rail";
 import {
@@ -28,8 +29,24 @@ export default async function HomePage() {
     ),
   ]);
 
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   return (
     <div className="mx-auto max-w-6xl space-y-10 px-4 py-5 sm:py-8">
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [
+            { "@type": "Organization", "@id": `${base}/#org`, name: ctx.storeName, url: `${base}/`, logo: `${base}/opengraph-image` },
+            {
+              "@type": "WebSite",
+              url: `${base}/`,
+              name: ctx.storeName,
+              publisher: { "@id": `${base}/#org` },
+              potentialAction: { "@type": "SearchAction", target: `${base}/search?q={search_term_string}`, "query-input": "required name=search_term_string" },
+            },
+          ],
+        }}
+      />
       {banners.length > 0 && (
         <section aria-label="Promotions" className="-mx-4 sm:mx-0">
           <ul className="flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 [scrollbar-width:none] sm:px-0">

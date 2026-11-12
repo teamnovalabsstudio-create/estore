@@ -1,3 +1,4 @@
+import { ipFrom, limitByIp } from "@/lib/rate-limit";
 import { detectReceiptType, storage } from "@/lib/storage";
 import { verifyOrderAccessToken } from "@/lib/signing";
 import { getStoreContext } from "@/services/context";
@@ -10,6 +11,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/orders/[id]
   const { id } = await ctx.params;
   const token = new URL(request.url).searchParams.get("t");
   if (!verifyOrderAccessToken(id, token)) return Response.json({ error: "This link is invalid." }, { status: 403 });
+  if (!(await limitByIp("receipt", ipFrom(request))).ok) return Response.json({ error: "Too many uploads. Please try again later." }, { status: 429 });
 
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BYTES + 64 * 1024) return Response.json({ error: "Receipt must be 5 MB or smaller." }, { status: 413 });

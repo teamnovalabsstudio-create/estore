@@ -486,3 +486,16 @@ export async function listImpulseCandidates(ctx: StoreContext, maxPricePaisa: nu
   });
   return rows.map(toCard).filter((p) => p.variants.length === 1 && p.inStock);
 }
+
+/** Everything the sitemap lists. Cached with the catalog. */
+export async function listSitemapEntries(ctx: StoreContext) {
+  "use cache";
+  cacheLife("hours");
+  cacheTag(catalogTag(ctx));
+  const [products, categories, collections] = await Promise.all([
+    db.product.findMany({ where: { storeId: ctx.storeId, status: "ACTIVE" }, select: { slug: true, updatedAt: true }, orderBy: { totalSold: "desc" } }),
+    db.category.findMany({ where: { storeId: ctx.storeId, isActive: true }, select: { slug: true } }),
+    db.collection.findMany({ where: { storeId: ctx.storeId, isActive: true }, select: { slug: true } }),
+  ]);
+  return { products, categories, collections };
+}

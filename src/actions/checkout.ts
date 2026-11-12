@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { normalizePkMobile } from "@/domain/phone";
 import { db } from "@/lib/db";
+import { limitByIp, requestIp } from "@/lib/rate-limit";
 import { orderUrl, verifyOrderAccessToken } from "@/lib/signing";
 import { placeOrder, type PlaceOrderResult } from "@/services/checkout.service";
 import { catalogTag } from "@/services/catalog.service";
@@ -20,6 +21,8 @@ async function clientIp(): Promise<string | null> {
 
 export async function sendOtpAction(phone: string): Promise<SendOtpResult> {
   if (typeof phone !== "string" || phone.length > 20) return { ok: false, error: "Enter a valid mobile number." };
+  const limited = await limitByIp("otpPerIp", await requestIp());
+  if (!limited.ok) return { ok: false, error: "Too many codes requested from this network. Please try again later.", retryAfterSeconds: limited.retryAfterSeconds };
   return sendOtp(await getStoreContext(), phone);
 }
 
@@ -83,6 +86,7 @@ export async function trackOrderAction(_prev: TrackState, formData: FormData): P
   const parsed = trackSchema.safeParse({ orderNumber: formData.get("orderNumber"), phone: formData.get("phone") });
   const echo = { orderNumber: String(formData.get("orderNumber") ?? ""), phone: String(formData.get("phone") ?? "") };
   if (!parsed.success) return { ...echo, error: "Enter your order number and phone." };
+  if (!(await limitByIp("track", await requestIp())).ok) return { ...echo, error: "Too many lookups. Please wait a few minutes and try again." };
   const phone = normalizePkMobile(parsed.data.phone);
   const { storeId } = await getStoreContext();
   const order = phone

@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { ipFrom, limitByIp } from "@/lib/rate-limit";
 import { searchProducts } from "@/services/catalog.service";
 import { getStoreContext } from "@/services/context";
 
@@ -8,6 +9,8 @@ export async function GET(request: NextRequest) {
   if (q.length < 2 || q.length > 80) {
     return Response.json({ hits: [] });
   }
+  const limited = await limitByIp("search", ipFrom(request));
+  if (!limited.ok) return Response.json({ hits: [] }, { status: 429, headers: { "Retry-After": String(limited.retryAfterSeconds) } });
   const results = await searchProducts(await getStoreContext(), q, 8);
   return Response.json(
     {

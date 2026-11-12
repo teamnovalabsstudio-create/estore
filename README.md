@@ -109,3 +109,16 @@ Every admin page and Server Action re-checks the permission itself (`requirePerm
   stock and payment windows; shipping zones; cities with Trax/Leopards/TCS/PostEx codes (missing codes
   are counted on the page); staff with one-time passwords, role changes and deactivation (sessions end
   immediately; the store always keeps an active owner).
+
+## Analytics, jobs & launch (M6)
+- **Dashboard** (`/admin`): revenue, orders, AOV, items per order, gross profit and margin, RTO rate —
+  for today / 7 / 30 days / custom, compared with the previous period — plus a daily revenue chart,
+  conversion by payment method, top sellers and the order pipeline. Definitions are on the page and in
+  `src/services/analytics.service.ts`; numbers reconcile with raw SQL (`tests/int/analytics.test.ts`).
+  `npm run db:seed:orders` adds ~60 days of demo orders (`-- --reset` removes them).
+- **Jobs:** `/api/cron/frequent` (5 min) and `/api/cron/nightly` — see `docs/RUNBOOK.md` §4.
+- **Hardening:** security headers + CSP, DB-backed rate limits, admin activity log, error reporting
+  (`src/instrumentation.ts`, optional `SENTRY_DSN`). Checklist: `docs/SECURITY.md`.
+- **SEO:** `sitemap.xml`, `robots.txt`, product and site JSON-LD, generated share images.
+- **Deploy:** `docs/RUNBOOK.md` (Docker/VPS, env, WhatsApp templates, payments, backups, capacity).
+  Load: `node scripts/load-smoke.mjs <url>` or `k6 run tests/load/storefront.k6.js`.

@@ -1,0 +1,12 @@
+# Replace with your domain. Caddy obtains and renews TLS certificates automatically.
+shop.example.pk {
+	encode zstd gzip
+	# Overwrite (never append) the client IP: the app's rate limits trust this header.
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Real-IP {remote_host}
+	}
+	request_body {
+		max_size 8MB
+	}
+}

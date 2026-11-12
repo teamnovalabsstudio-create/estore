@@ -1,0 +1,58 @@
+# VPS deployment: Postgres + app + cron ticker behind Caddy (automatic HTTPS).
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#   docker compose -f docker-compose.prod.yml --env-file .env.production --profile tools run --rm migrate
+name: hikari
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: estore
+      POSTGRES_USER: estore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD", "pg_isready", "-U", "estore"], interval: 10s, retries: 5 }
+
+  migrate:
+    build: .
+    command: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+    env_file: .env.production
+    environment: { DATABASE_URL: "postgresql://estore:${POSTGRES_PASSWORD}@db:5432/estore" }
+    depends_on: { db: { condition: service_healthy } }
+    profiles: ["tools"]
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env.production
+    environment: { DATABASE_URL: "postgresql://estore:${POSTGRES_PASSWORD}@db:5432/estore" }
+    volumes: [uploads:/app/storage]
+    depends_on: { db: { condition: service_healthy } }
+
+  # Calls the cron routes: every 5 minutes, plus the nightly job between 22:00 and 22:05 UTC (03:00 PKT).
+  cron:
+    image: curlimages/curl:8.10.1
+    restart: unless-stopped
+    environment: { CRON_SECRET: "${CRON_SECRET:?set CRON_SECRET}" }
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          curl -fsS -H "Authorization: Bearer $$CRON_SECRET" http://app:3000/api/cron/frequent > /dev/null
+          t=$$(date -u +%H%M)
+          if [ "$$t" -ge 2200 ] && [ "$$t" -lt 2205 ]; then
+            curl -fsS -H "Authorization: Bearer $$CRON_SECRET" http://app:3000/api/cron/nightly > /dev/null
+          fi
+          sleep 300
+        done
+    depends_on: [app]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes: [./deploy/Caddyfile:/etc/caddy/Caddyfile:ro, caddy:/data]
+    depends_on: [app]
+
+volumes: { pgdata: {}, uploads: {}, caddy: {} }

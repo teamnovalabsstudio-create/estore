@@ -8,6 +8,7 @@ const TABS = [
   ["/admin/settings", "Store"],
   ["/admin/settings/shipping", "Shipping & cities"],
   ["/admin/settings/staff", "Staff"],
+  ["/admin/settings/audit", "Activity log"],
 ] as const;
 
 export function SettingsTabs() {

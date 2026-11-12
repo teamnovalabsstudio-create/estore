@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "DailyStat" ADD COLUMN     "codFeePaisa" BIGINT NOT NULL DEFAULT 0,
+ADD COLUMN     "placedCount" INTEGER NOT NULL DEFAULT 0;
