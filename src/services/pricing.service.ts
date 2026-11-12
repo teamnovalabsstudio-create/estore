@@ -64,11 +64,11 @@ export type Quote = Omit<PricingResult, "lines"> & {
 };
 
 // Promotion configs are JSON in the DB: validate before trusting them.
-const bundleConfig = z.object({ qty: z.number().int().min(2), pricePaisa: z.number().int().min(0) });
-const tieredConfig = z.object({
+export const bundleConfig = z.object({ qty: z.number().int().min(2), pricePaisa: z.number().int().min(0) });
+export const tieredConfig = z.object({
   tiers: z.array(z.object({ minQty: z.number().int().min(1), percent: z.number().gt(0).max(100) })).min(1),
 });
-const bxgyConfig = z.object({ buy: z.number().int().min(1), get: z.number().int().min(1) });
+export const bxgyConfig = z.object({ buy: z.number().int().min(1), get: z.number().int().min(1) });
 
 function toPromotionInput(p: {
   id: string;

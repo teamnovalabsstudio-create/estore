@@ -26,6 +26,12 @@ const schema = z
     WHATSAPP_PHONE_NUMBER_ID: optional,
     /** Approved "authentication" template name with a single {{1}} code parameter. */
     WHATSAPP_OTP_TEMPLATE: z.string().default("otp_code"),
+    /** Approved utility template: body {{1}} name, {{2}} order no., {{3}} total; two quick-reply buttons (Confirm, Cancel). */
+    WHATSAPP_CONFIRM_TEMPLATE: z.string().default("order_confirmation"),
+    /** Meta app secret — verifies X-Hub-Signature-256 on incoming WhatsApp webhooks. */
+    WHATSAPP_APP_SECRET: optional,
+    /** Token you choose when registering the webhook URL with Meta. */
+    WHATSAPP_VERIFY_TOKEN: optional,
     /** Generic HTTP SMS gateway: POST {to, message} with a bearer key. */
     SMS_API_URL: optional,
     SMS_API_KEY: optional,

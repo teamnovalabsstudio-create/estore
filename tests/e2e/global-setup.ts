@@ -31,6 +31,11 @@ export default async function globalSetup() {
                            WHERE c.id = x."couponId"`, [ids]);
       await client.query(`DELETE FROM "Order" WHERE id = ANY($1)`, [ids]);
     }
+    await client.query(`DELETE FROM "ManifestBatch" b WHERE NOT EXISTS (SELECT 1 FROM "Order" o WHERE o."manifestBatchId" = b.id)`);
+    // Catalog records made by admin E2E runs (never ones with orders).
+    await client.query(`DELETE FROM "Product" p WHERE p.title LIKE 'E2E %' AND NOT EXISTS (SELECT 1 FROM "OrderItem" oi JOIN "ProductVariant" v ON v.id = oi."variantId" WHERE v."productId" = p.id)`);
+    await client.query(`DELETE FROM "Coupon" WHERE code LIKE 'E2E%' AND "usedCount" = 0`);
+    await client.query(`DELETE FROM "AdminUser" WHERE email LIKE 'e2e-%@estore.test'`);
     await client.query(`DELETE FROM "Customer" c WHERE c.name = $1 AND NOT EXISTS (SELECT 1 FROM "Order" o WHERE o."customerId" = c.id)`, [E2E_CUSTOMER]);
     await client.query("COMMIT");
   } catch (e) {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { getCheckoutConfig } from "@/services/checkout-config.service";
 import { getStoreContext } from "@/services/context";
@@ -20,6 +21,7 @@ export default function CheckoutPage() {
 }
 
 async function Checkout() {
+  await connection(); // the verified-phone cookie's expiry is checked against the current time
   const ctx = await getStoreContext();
   const [config, jar] = await Promise.all([getCheckoutConfig(ctx), cookies()]);
   // A phone verified earlier this session doesn't need another code.

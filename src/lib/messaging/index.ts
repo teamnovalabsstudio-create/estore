@@ -81,3 +81,38 @@ export function otpSenders(): MessageSender[] {
   if (env.SMS_API_URL && env.SMS_API_KEY) senders.push(new HttpSmsSender(env.SMS_API_URL, env.SMS_API_KEY));
   return senders;
 }
+
+/**
+ * Order confirmation with Confirm / Cancel quick-reply buttons. The button
+ * payloads come back on /api/webhooks/whatsapp and move the order.
+ * Returns false when WhatsApp isn't configured (caller falls back to wa.me).
+ */
+export async function sendOrderConfirmationTemplate(
+  phoneE164: string,
+  args: { orderId: string; name: string; orderNumber: string; totalText: string },
+): Promise<boolean> {
+  if (env.MESSAGING_DRIVER !== "whatsapp" || !env.WHATSAPP_TOKEN || !env.WHATSAPP_PHONE_NUMBER_ID) return false;
+  const to = toWhatsAppId(phoneE164);
+  if (!to) throw new Error("Invalid phone for WhatsApp");
+  const res = await fetch(`https://graph.facebook.com/v21.0/${env.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.WHATSAPP_TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: env.WHATSAPP_CONFIRM_TEMPLATE,
+        language: { code: "en" },
+        components: [
+          { type: "body", parameters: [args.name, args.orderNumber, args.totalText].map((text) => ({ type: "text", text })) },
+          { type: "button", sub_type: "quick_reply", index: "0", parameters: [{ type: "payload", payload: `CONFIRM:${args.orderId}` }] },
+          { type: "button", sub_type: "quick_reply", index: "1", parameters: [{ type: "payload", payload: `CANCEL:${args.orderId}` }] },
+        ],
+      },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`WhatsApp send failed: ${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}`);
+  return true;
+}

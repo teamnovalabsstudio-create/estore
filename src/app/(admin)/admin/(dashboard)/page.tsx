@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatPKR } from "@/domain/money";
-import { requireAdmin } from "@/lib/auth/guard";
+import { requirePermission } from "@/lib/auth/guard";
 import { getCatalogOverview } from "@/services/inventory.service";
 
 export const metadata: Metadata = { title: "Dashboard", robots: { index: false } };
@@ -33,7 +33,7 @@ export default function AdminDashboardPage() {
 }
 
 async function Overview() {
-  const user = await requireAdmin();
+  const user = await requirePermission("dashboard");
   const o = await getCatalogOverview(user.storeId);
 
   const stats = [
